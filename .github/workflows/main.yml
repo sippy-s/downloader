@@ -1,0 +1,62 @@
+name: YouTube Downloader
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'لینک ویدیو یوتیوب (یا چند لینک با فاصله)'
+        required: true
+        default: 'https://youtu.be/example'
+      quality:
+        description: 'کیفیت مورد نظر (مثال: 1080, 720, bestaudio, best)'
+        required: false
+        default: '720'
+      password:
+        description: 'رمز فایل ZIP (اختیاری)'
+        required: false
+        default: ''
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1️⃣ چک کردن کدهای ریپازیتوری
+        uses: actions/checkout@v4
+
+      - name: 2️⃣ نصب Python و yt-dlp
+        run: |
+          sudo apt update
+          sudo apt install -y python3-pip ffmpeg zip
+          pip3 install yt-dlp
+
+      - name: 3️⃣ دانلود ویدیو از یوتیوب
+        run: |
+          mkdir -p videos
+          IFS=' ' read -ra URLS <<< "${{ github.event.inputs.url }}"
+          for URL in "${URLS[@]}"; do
+            echo "در حال دانلود: $URL"
+            yt-dlp -f "${{ github.event.inputs.quality }}" \
+                   --write-subs --sub-lang en,fa \
+                   --embed-subs \
+                   --output "videos/%(title)s.%(ext)s" \
+                   "$URL"
+          done
+
+      - name: 4️⃣ ایجاد فایل ZIP (در صورت نیاز به رمز)
+        if: ${{ github.event.inputs.password != '' }}
+        run: |
+          cd videos
+          zip -r -P "${{ github.event.inputs.password }}" ../videos-archive.zip .
+          cd ..
+          rm -rf videos
+          mkdir videos
+          mv videos-archive.zip videos/
+
+      - name: 5️⃣ آپلود خودکار ویدیوها به گیت‌هاب
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add videos/
+          git commit -m "دانلود خودکار ویدیو: ${{ github.event.inputs.url }}" || echo "هیچ تغییری وجود ندارد"
+          git push
+        
